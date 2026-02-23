@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Escáner de estrategia SMA para futuros de Binance con backtesting en tiempo real">
+    <title>SMA Trend Scanner - Binance</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📊 SMA Strategy Backtester</h1>
+            <p class="subtitle">Escáner de tendencias con medias móviles · Binance Futures</p>
+
+            <div class="settings-bar">
+                <div class="input-group">
+                    <label for="capital">Capital ($)</label>
+                    <input type="number" id="capital" value="1000" min="10" step="100">
+                </div>
+                <div class="input-group">
+                    <label for="leverage">Apalancamiento</label>
+                    <input type="number" id="leverage" value="10" min="1" max="125">
+                </div>
+                <div class="input-group">
+                    <label for="timeframe">Timeframe</label>
+                    <select id="timeframe">
+                        <option value="15m">15 Minutos</option>
+                        <option value="1h">1 Hora</option>
+                        <option value="4h" selected>4 Horas</option>
+                        <option value="1d">1 Día</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label for="tp">Take Profit (%)</label>
+                    <input type="number" id="tp" value="3" min="0.5" max="50" step="0.5">
+                </div>
+                <div class="input-group">
+                    <label for="limitKlines">Cant. Velas</label>
+                    <input type="number" id="limitKlines" value="500" min="200" max="1500">
+                </div>
+                <div class="input-group">
+                    <label for="topPairs">Top Pares</label>
+                    <input type="number" id="topPairs" value="20" min="5" max="100">
+                </div>
+                <div class="input-group">
+                    <label for="patternMode">Modo Patrones</label>
+                    <select id="patternMode">
+                        <option value="off">Desactivado</option>
+                        <option value="confirm" selected>Confirmación</option>
+                        <option value="expand">Expansión</option>
+                    </select>
+                </div>
+                <button id="btnStart" title="Iniciar escaneo del mercado">
+                    <span id="btnText">🔍 Escanear Mercado</span>
+                </button>
+            </div>
+        </header>
+
+        <main>
+            <!-- Barra de progreso -->
+            <div id="progressContainer" class="progress-container hidden">
+                <div id="progressBar" class="progress-bar"></div>
+                <span id="progressText" class="progress-text">0%</span>
+            </div>
+
+            <div id="status" class="status-box">Listo para analizar...</div>
+
+            <!-- Estado general del mercado -->
+            <div id="marketSentiment" class="market-sentiment hidden">
+                <div class="sentiment-header">
+                    <h2 id="sentimentIcon" class="sentiment-icon">📊</h2>
+                    <div class="sentiment-info">
+                        <h3 id="sentimentTitle" class="sentiment-title">Analizando...</h3>
+                        <p id="sentimentDesc" class="sentiment-desc">Esperando datos del mercado</p>
+                    </div>
+                </div>
+                <div class="sentiment-meters">
+                    <div class="meter-group">
+                        <span class="meter-label">🟢 Alcistas</span>
+                        <div class="meter-bar-bg">
+                            <div id="meterBull" class="meter-bar bull" style="width: 0%"></div>
+                        </div>
+                        <span id="meterBullPct" class="meter-pct">0%</span>
+                    </div>
+                    <div class="meter-group">
+                        <span class="meter-label">🔴 Bajistas</span>
+                        <div class="meter-bar-bg">
+                            <div id="meterBear" class="meter-bar bear" style="width: 0%"></div>
+                        </div>
+                        <span id="meterBearPct" class="meter-pct">0%</span>
+                    </div>
+                    <div class="meter-group">
+                        <span class="meter-label">🟡 Neutrales</span>
+                        <div class="meter-bar-bg">
+                            <div id="meterNeutral" class="meter-bar neutral" style="width: 0%"></div>
+                        </div>
+                        <span id="meterNeutralPct" class="meter-pct">0%</span>
+                    </div>
+                </div>
+                <div class="sentiment-details">
+                    <div class="detail-chip" id="chipBtcTrend">BTC: —</div>
+                    <div class="detail-chip" id="chipAvgRsi">RSI Prom: —</div>
+                    <div class="detail-chip" id="chipVolatility">Volatilidad: —</div>
+                    <div class="detail-chip" id="chipMomentum">Momentum: —</div>
+                    <div class="detail-chip" id="chipPatterns">Patrones: —</div>
+                </div>
+            </div>
+
+            <!-- Última acción -->
+            <div id="lastAction" class="last-action hidden">
+                <span class="last-action-label">Última acción:</span>
+                <span id="lastActionText" class="last-action-text"></span>
+            </div>
+
+            <!-- Resumen general -->
+            <div id="summary" class="summary hidden">
+                <div class="summary-card">
+                    <span class="summary-label">Pares Analizados</span>
+                    <span id="sumTotal" class="summary-value">0</span>
+                </div>
+                <div class="summary-card buy">
+                    <span class="summary-label">Señales de Compra</span>
+                    <span id="sumBuy" class="summary-value">0</span>
+                </div>
+                <div class="summary-card sell">
+                    <span class="summary-label">Señales de Venta</span>
+                    <span id="sumSell" class="summary-value">0</span>
+                </div>
+                <div class="summary-card">
+                    <span class="summary-label">Mejor ROI</span>
+                    <span id="sumBestROI" class="summary-value">—</span>
+                </div>
+            </div>
+
+            <!-- Tabla de resultados -->
+            <div class="table-wrapper">
+                <table id="resultsTable">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Par</th>
+                            <th class="sortable" data-sort="roi">ROI % <span class="sort-icon">⇅</span></th>
+                            <th class="sortable" data-sort="winRate">Win Rate <span class="sort-icon">⇅</span></th>
+                            <th class="sortable" data-sort="trades">Trades <span class="sort-icon">⇅</span></th>
+                            <th>Patrones</th>
+                            <th>Señal</th>
+                            <th>Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultsBody"></tbody>
+                </table>
+            </div>
+
+            <div id="emptyState" class="empty-state">
+                <p>🔎 Presiona <strong>"Escanear Mercado"</strong> para comenzar el análisis</p>
+            </div>
+        </main>
+
+        <footer>
+            <p>⚠️ Esto no es consejo financiero. Usa bajo tu propio riesgo. Datos de Binance Futures.</p>
+        </footer>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/technicalindicators@2.0.6/dist/browser.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

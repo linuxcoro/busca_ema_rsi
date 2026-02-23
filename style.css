@@ -1,0 +1,814 @@
+/* =============================================
+   SMA Strategy Backtester — Estilos
+   ============================================= */
+
+/* ── Reset & Base ─────────────────────────── */
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    background: #0b0e11;
+    color: #eaecef;
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+    line-height: 1.6;
+    min-height: 100vh;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* ── Header ───────────────────────────────── */
+header h1 {
+    font-size: 1.8rem;
+    margin-bottom: 4px;
+    background: linear-gradient(135deg, #f0b90b, #fcd535);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.subtitle {
+    color: #848e9c;
+    font-size: 0.9rem;
+    margin-bottom: 16px;
+}
+
+/* ── Settings Bar ─────────────────────────── */
+.settings-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    background: #1e2329;
+    padding: 16px 20px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    align-items: flex-end;
+    border: 1px solid #2b3139;
+}
+
+.input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.input-group label {
+    font-size: 0.75rem;
+    color: #848e9c;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+}
+
+input,
+select {
+    background: #2b3139;
+    border: 1px solid #474d57;
+    color: #eaecef;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    width: 120px;
+}
+
+input:focus,
+select:focus {
+    outline: none;
+    border-color: #f0b90b;
+    box-shadow: 0 0 0 2px rgba(240, 185, 11, 0.15);
+}
+
+button {
+    background: linear-gradient(135deg, #f0b90b, #e8a700);
+    color: #1e2329;
+    font-weight: 700;
+    cursor: pointer;
+    border: none;
+    padding: 10px 24px;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+button:hover:not(:disabled) {
+    background: linear-gradient(135deg, #fcd535, #f0b90b);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(240, 185, 11, 0.3);
+}
+
+button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+button.scanning {
+    animation: pulse-btn 1.5s infinite;
+}
+
+@keyframes pulse-btn {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 0.9; }
+}
+
+/* ── Progress Bar ─────────────────────────── */
+.progress-container {
+    position: relative;
+    width: 100%;
+    height: 6px;
+    background: #2b3139;
+    border-radius: 3px;
+    margin-bottom: 12px;
+    overflow: hidden;
+}
+
+.progress-bar {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #f0b90b, #0ecb81);
+    border-radius: 3px;
+    transition: width 0.4s ease;
+}
+
+.progress-text {
+    position: absolute;
+    right: 0;
+    top: 10px;
+    font-size: 0.7rem;
+    color: #848e9c;
+}
+
+/* ── Status ───────────────────────────────── */
+.status-box {
+    padding: 10px 16px;
+    background: #1e2329;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    font-size: 0.85rem;
+    color: #848e9c;
+    border-left: 3px solid #474d57;
+    transition: all 0.3s;
+}
+
+.status-box.status-error {
+    border-left-color: #f6465d;
+    color: #ff7a8a;
+}
+
+/* ── Market Sentiment Panel ────────────────── */
+.market-sentiment {
+    padding: 20px 24px;
+    border-radius: 14px;
+    margin-bottom: 20px;
+    border: 2px solid #2b3139;
+    background: linear-gradient(135deg, #1e2329, #252a31);
+    animation: fadeIn 0.5s ease-out;
+    transition: all 0.4s ease;
+}
+
+.market-sentiment.sentiment-bullish {
+    border-color: #0ecb81;
+    background: linear-gradient(135deg, rgba(14, 203, 129, 0.08), rgba(14, 203, 129, 0.02));
+    box-shadow: 0 0 30px rgba(14, 203, 129, 0.1);
+}
+
+.market-sentiment.sentiment-slightly-bullish {
+    border-color: #7dd8a6;
+    background: linear-gradient(135deg, rgba(14, 203, 129, 0.05), rgba(14, 203, 129, 0.01));
+    box-shadow: 0 0 20px rgba(14, 203, 129, 0.06);
+}
+
+.market-sentiment.sentiment-bearish {
+    border-color: #f6465d;
+    background: linear-gradient(135deg, rgba(246, 70, 93, 0.08), rgba(246, 70, 93, 0.02));
+    box-shadow: 0 0 30px rgba(246, 70, 93, 0.1);
+}
+
+.market-sentiment.sentiment-slightly-bearish {
+    border-color: #e88898;
+    background: linear-gradient(135deg, rgba(246, 70, 93, 0.05), rgba(246, 70, 93, 0.01));
+    box-shadow: 0 0 20px rgba(246, 70, 93, 0.06);
+}
+
+.market-sentiment.sentiment-neutral {
+    border-color: #f0b90b;
+    background: linear-gradient(135deg, rgba(240, 185, 11, 0.06), rgba(240, 185, 11, 0.01));
+    box-shadow: 0 0 20px rgba(240, 185, 11, 0.08);
+}
+
+.sentiment-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 18px;
+}
+
+.sentiment-icon {
+    font-size: 2.8rem;
+    line-height: 1;
+    animation: pulse-icon 2s ease-in-out infinite;
+}
+
+@keyframes pulse-icon {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+}
+
+.sentiment-title {
+    font-size: 1.3rem;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    margin-bottom: 4px;
+}
+
+.sentiment-bullish .sentiment-title { color: #0ecb81; }
+.sentiment-slightly-bullish .sentiment-title { color: #7dd8a6; }
+.sentiment-bearish .sentiment-title { color: #f6465d; }
+.sentiment-slightly-bearish .sentiment-title { color: #e88898; }
+.sentiment-neutral .sentiment-title { color: #f0b90b; }
+
+.sentiment-desc {
+    color: #b7bdc6;
+    font-size: 0.85rem;
+    line-height: 1.5;
+}
+
+/* Meters */
+.sentiment-meters {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.meter-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.meter-label {
+    font-size: 0.75rem;
+    color: #848e9c;
+    min-width: 100px;
+    font-weight: 600;
+}
+
+.meter-bar-bg {
+    flex: 1;
+    height: 10px;
+    background: #2b3139;
+    border-radius: 5px;
+    overflow: hidden;
+}
+
+.meter-bar {
+    height: 100%;
+    border-radius: 5px;
+    transition: width 1s ease-out;
+}
+
+.meter-bar.bull {
+    background: linear-gradient(90deg, #0ecb81, #00ff9d);
+}
+
+.meter-bar.bear {
+    background: linear-gradient(90deg, #f6465d, #ff6b7a);
+}
+
+.meter-bar.neutral {
+    background: linear-gradient(90deg, #f0b90b, #fcd535);
+}
+
+.meter-pct {
+    font-size: 0.75rem;
+    color: #eaecef;
+    min-width: 80px;
+    text-align: right;
+    font-weight: 600;
+}
+
+/* Detail chips */
+.sentiment-details {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.detail-chip {
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    background: #2b3139;
+    color: #eaecef;
+    border: 1px solid #474d57;
+    transition: all 0.3s;
+}
+
+.detail-chip.chip-bull {
+    border-color: #0ecb81;
+    color: #0ecb81;
+    background: rgba(14, 203, 129, 0.1);
+}
+
+.detail-chip.chip-bear {
+    border-color: #f6465d;
+    color: #f6465d;
+    background: rgba(246, 70, 93, 0.1);
+}
+
+.detail-chip.chip-neutral {
+    border-color: #f0b90b;
+    color: #f0b90b;
+    background: rgba(240, 185, 11, 0.1);
+}
+
+/* ── Last Action ──────────────────────────── */
+.last-action {
+    padding: 12px 16px;
+    background: linear-gradient(135deg, #1e2329, #252a31);
+    border-radius: 8px;
+    margin-bottom: 16px;
+    font-size: 0.9rem;
+    border: 2px solid #2b3139;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    animation: slideIn 0.3s ease-out;
+}
+
+.last-action-label {
+    color: #848e9c;
+    font-weight: 600;
+}
+
+.last-action-text {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.buy-action {
+    color: #0ecb81;
+    font-weight: 700;
+}
+
+.sell-action {
+    color: #f6465d;
+    font-weight: 700;
+}
+
+.view-action {
+    color: #f0b90b;
+    font-weight: 700;
+}
+
+.action-time {
+    color: #848e9c;
+    font-size: 0.8rem;
+    font-style: italic;
+}
+
+@keyframes slideIn {
+    from { 
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to { 
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ── Summary Cards ────────────────────────── */
+.summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.summary-card {
+    background: #1e2329;
+    padding: 16px;
+    border-radius: 10px;
+    text-align: center;
+    border: 1px solid #2b3139;
+    transition: transform 0.2s;
+}
+
+.summary-card:hover {
+    transform: translateY(-2px);
+}
+
+.summary-card.buy {
+    border-color: #0ecb81;
+    background: rgba(14, 203, 129, 0.05);
+}
+
+.summary-card.sell {
+    border-color: #f6465d;
+    background: rgba(246, 70, 93, 0.05);
+}
+
+.summary-label {
+    display: block;
+    font-size: 0.7rem;
+    color: #848e9c;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+}
+
+.summary-value {
+    display: block;
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #eaecef;
+}
+
+.summary-card.buy .summary-value {
+    color: #0ecb81;
+}
+
+.summary-card.sell .summary-value {
+    color: #f6465d;
+}
+
+/* ── Table ────────────────────────────────── */
+.table-wrapper {
+    overflow-x: auto;
+    border-radius: 10px;
+    border: 1px solid #2b3139;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+thead {
+    background: #1e2329;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+th {
+    padding: 14px 12px;
+    text-align: left;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #848e9c;
+    border-bottom: 2px solid #2b3139;
+    user-select: none;
+}
+
+th.sortable {
+    cursor: pointer;
+    transition: color 0.2s;
+}
+
+th.sortable:hover {
+    color: #f0b90b;
+}
+
+.sort-icon {
+    font-size: 0.7rem;
+    margin-left: 4px;
+    opacity: 0.5;
+}
+
+th.sortable:hover .sort-icon {
+    opacity: 1;
+}
+
+td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid #1e2329;
+    font-size: 0.9rem;
+}
+
+.row-index {
+    color: #474d57;
+    font-size: 0.8rem;
+    width: 30px;
+}
+
+tr {
+    transition: all 0.3s ease;
+}
+
+tr:hover {
+    background: rgba(30, 35, 41, 0.7);
+}
+
+/* ── Selected row ─────────────────────────── */
+tr.row-selected {
+    background: linear-gradient(90deg, rgba(240, 185, 11, 0.15), rgba(240, 185, 11, 0.05)) !important;
+    border-left: 4px solid #f0b90b;
+    box-shadow: 0 0 20px rgba(240, 185, 11, 0.2);
+    transform: scale(1.01);
+    position: relative;
+}
+
+tr.row-selected::before {
+    content: '👉';
+    position: absolute;
+    left: -20px;
+    font-size: 1.2rem;
+    animation: pointRight 1s ease-in-out infinite;
+}
+
+@keyframes pointRight {
+    0%, 100% { transform: translateX(0); }
+    50% { transform: translateX(5px); }
+}
+
+.pos { color: #0ecb81; font-weight: 600; }
+.neg { color: #f6465d; font-weight: 600; }
+
+.trade-detail {
+    font-size: 0.7rem;
+    color: #848e9c;
+}
+
+/* ── Signal rows ──────────────────────────── */
+.signal-active {
+    background: rgba(240, 185, 11, 0.06) !important;
+    border-left: 3px solid #f0b90b;
+    animation: glow-buy 2s ease-in-out infinite alternate;
+}
+
+@keyframes glow-buy {
+    from { box-shadow: inset 0 0 8px rgba(240, 185, 11, 0.1); }
+    to   { box-shadow: inset 0 0 20px rgba(240, 185, 11, 0.2); }
+}
+
+.signal-short {
+    background: rgba(246, 70, 93, 0.06) !important;
+    border-left: 3px solid #f6465d;
+    animation: glow-sell 2s ease-in-out infinite alternate;
+}
+
+@keyframes glow-sell {
+    from { box-shadow: inset 0 0 8px rgba(246, 70, 93, 0.1); }
+    to   { box-shadow: inset 0 0 20px rgba(246, 70, 93, 0.2); }
+}
+
+/* ── Winner rows (win rate > 50%) ─────────── */
+.winner-row {
+    background: rgba(14, 203, 129, 0.08) !important;
+    border-left: 3px solid #0ecb81;
+    box-shadow: inset 0 0 15px rgba(14, 203, 129, 0.12);
+}
+
+.winner-row:hover {
+    background: rgba(14, 203, 129, 0.12) !important;
+    box-shadow: inset 0 0 20px rgba(14, 203, 129, 0.18);
+}
+
+/* ── Signal Badges (columna Señal) ─────────── */
+.badge-signal {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+}
+
+.badge-signal-buy {
+    background: rgba(14, 203, 129, 0.15);
+    color: #0ecb81;
+    border: 1px solid rgba(14, 203, 129, 0.4);
+    animation: pulse-signal 2s ease-in-out infinite;
+}
+
+.badge-signal-sell {
+    background: rgba(246, 70, 93, 0.15);
+    color: #f6465d;
+    border: 1px solid rgba(246, 70, 93, 0.4);
+    animation: pulse-signal 2s ease-in-out infinite;
+}
+
+.badge-signal-wait {
+    background: rgba(132, 142, 156, 0.1);
+    color: #848e9c;
+    border: 1px solid rgba(132, 142, 156, 0.2);
+}
+
+@keyframes pulse-signal {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+/* ── Action Buttons (columna Acción) ──────── */
+.action-cell {
+    white-space: nowrap;
+}
+
+.btn-action {
+    display: inline-block;
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-decoration: none;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    text-align: center;
+    min-width: 90px;
+}
+
+.btn-buy {
+    background: linear-gradient(135deg, #0ecb81, #0aa06a);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(14, 203, 129, 0.3);
+}
+
+.btn-buy:hover {
+    transform: translateY(-2px) scale(1.03);
+    box-shadow: 0 6px 20px rgba(14, 203, 129, 0.5);
+    background: linear-gradient(135deg, #12e896, #0ecb81);
+}
+
+.btn-sell {
+    background: linear-gradient(135deg, #f6465d, #d93651);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(246, 70, 93, 0.3);
+}
+
+.btn-sell:hover {
+    transform: translateY(-2px) scale(1.03);
+    box-shadow: 0 6px 20px rgba(246, 70, 93, 0.5);
+    background: linear-gradient(135deg, #ff6b7a, #f6465d);
+}
+
+.btn-view {
+    background: linear-gradient(135deg, #474d57, #3a3f47);
+    color: #eaecef;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.btn-view:hover {
+    transform: translateY(-2px) scale(1.03);
+    box-shadow: 0 6px 16px rgba(71, 77, 87, 0.5);
+    background: linear-gradient(135deg, #5a6270, #474d57);
+    color: #f0b90b;
+}
+
+/* ── Fade-in animation ────────────────────── */
+.fade-in {
+    animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Empty state ──────────────────────────── */
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: #474d57;
+    font-size: 1rem;
+}
+
+.empty-state strong {
+    color: #f0b90b;
+}
+
+/* ── Footer ───────────────────────────────── */
+footer {
+    text-align: center;
+    margin-top: 40px;
+    padding: 16px;
+    color: #474d57;
+    font-size: 0.75rem;
+    border-top: 1px solid #1e2329;
+}
+
+/* ── Utilities ────────────────────────────── */
+.hidden {
+    display: none !important;
+}
+
+/* ── Responsive ───────────────────────────── */
+@media (max-width: 768px) {
+    .container {
+        padding: 12px;
+    }
+
+    header h1 {
+        font-size: 1.3rem;
+    }
+
+    .settings-bar {
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .input-group {
+        width: 100%;
+    }
+
+    input, select {
+        width: 100%;
+    }
+
+    button {
+        width: 100%;
+        padding: 14px;
+        font-size: 1rem;
+    }
+
+    .summary {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    td, th {
+        padding: 8px 6px;
+        font-size: 0.8rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .summary {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ── Candlestick Pattern Badges ───────────── */
+.badge-pattern {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 12px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    margin: 1px 2px;
+    white-space: nowrap;
+    letter-spacing: 0.2px;
+}
+
+.badge-pattern-bull {
+    background: rgba(14, 203, 129, 0.12);
+    color: #0ecb81;
+    border: 1px solid rgba(14, 203, 129, 0.3);
+}
+
+.badge-pattern-bear {
+    background: rgba(246, 70, 93, 0.12);
+    color: #f6465d;
+    border: 1px solid rgba(246, 70, 93, 0.3);
+}
+
+.badge-pattern-neutral {
+    background: rgba(240, 185, 11, 0.12);
+    color: #f0b90b;
+    border: 1px solid rgba(240, 185, 11, 0.3);
+}
+
+.patterns-cell {
+    max-width: 220px;
+    line-height: 1.8;
+}
+
+.pattern-score {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 8px;
+    font-size: 0.6rem;
+    font-weight: 700;
+    margin-left: 4px;
+}
+
+.pattern-score.score-pos {
+    background: rgba(14, 203, 129, 0.15);
+    color: #0ecb81;
+}
+
+.pattern-score.score-neg {
+    background: rgba(246, 70, 93, 0.15);
+    color: #f6465d;
+}
+
+.pattern-score.score-zero {
+    background: rgba(132, 142, 156, 0.1);
+    color: #848e9c;
+}
