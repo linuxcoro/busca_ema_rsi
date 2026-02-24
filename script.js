@@ -175,6 +175,25 @@ document.querySelectorAll('th.sortable').forEach(th => {
 });
 
 // ── Proceso principal ──────────────────────────
+// Verificar que la librería de patrones está disponible
+function checkPatternLibrary() {
+    return new Promise((resolve) => {
+        let attempts = 0;
+        const checkLib = () => {
+            attempts++;
+            const hasLib = typeof window.bullishengulfingpattern === 'function' || 
+                          typeof window.bearishengulfingpattern === 'function' ||
+                          attempts > 30; // máximo 30 intentos (3 segundos)
+            if (hasLib) {
+                resolve(true);
+            } else {
+                setTimeout(checkLib, 100);
+            }
+        };
+        checkLib();
+    });
+}
+
 async function startProcess() {
     if (isScanning) return;
 
@@ -188,6 +207,9 @@ async function startProcess() {
         showNotification('Capital y apalancamiento deben ser mayores a 0.', 'error');
         return;
     }
+
+    // Verificar que la librería de patrones está cargada
+    await checkPatternLibrary();
 
     isScanning = true;
     resultsData = [];
