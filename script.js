@@ -181,16 +181,11 @@ function checkPatternLibrary() {
         let attempts = 0;
         const checkLib = () => {
             attempts++;
-            const hasLib = typeof window.bullishengulfingpattern === 'function' || 
-                          typeof window.bearishengulfingpattern === 'function' ||
-                          attempts > 30; // máximo 30 intentos (3 segundos)
-            if (hasLib) {
-                resolve(true);
-            } else {
-                setTimeout(checkLib, 100);
-            }
+            // Si la librería no está disponible o TensorFlow no cargó, continuar de todos modos
+            const hasLib = typeof window.bullishengulfingpattern === 'function' || attempts > 30;
+            resolve(true);
         };
-        checkLib();
+        setTimeout(checkLib, 100);
     });
 }
 
