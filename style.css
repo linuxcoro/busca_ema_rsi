@@ -814,7 +814,7 @@ footer {
 }
 
 .patterns-cell {
-    max-width: 220px;
+    max-width: 400px;
     line-height: 1.8;
     overflow-wrap: break-word;
     word-break: break-word;
