@@ -37,8 +37,37 @@ const CANDLE_PATTERNS = {
 };
 
 function detectCandlePatterns(opens, highs, lows, closes, index) {
-    // Patrones desactivados: technicalindicators causa conflictos con CSP
-    return { bullishPatterns: [], bearishPatterns: [], score: 0 };
+    const start = Math.max(0, index - PATTERN_WINDOW + 1);
+    const input = {
+        open:  opens.slice(start, index + 1),
+        high:  highs.slice(start, index + 1),
+        close: closes.slice(start, index + 1),
+        low:   lows.slice(start, index + 1),
+    };
+
+    const bullishPatterns = [];
+    const bearishPatterns = [];
+    let score = 0;
+
+    for (const p of CANDLE_PATTERNS.bullish) {
+        try {
+            if (typeof window[p.fn] === 'function' && window[p.fn](input)) {
+                bullishPatterns.push(p);
+                score += p.weight;
+            }
+        } catch (e) { /* pattern unavailable */ }
+    }
+
+    for (const p of CANDLE_PATTERNS.bearish) {
+        try {
+            if (typeof window[p.fn] === 'function' && window[p.fn](input)) {
+                bearishPatterns.push(p);
+                score -= p.weight;
+            }
+        } catch (e) { /* pattern unavailable */ }
+    }
+
+    return { bullishPatterns, bearishPatterns, score };
 }
 
 // ── Estado global ──────────────────────────────
@@ -148,8 +177,16 @@ document.querySelectorAll('th.sortable').forEach(th => {
 // ── Proceso principal ──────────────────────────
 // Verificar que la librería de patrones está disponible
 function checkPatternLibrary() {
-    // Patrones desactivados, no hay necesidad de esperar
-    return Promise.resolve(true);
+    return new Promise((resolve) => {
+        let attempts = 0;
+        const checkLib = () => {
+            attempts++;
+            const hasLib = typeof window.bullishengulfingpattern === 'function' || attempts > 30;
+            if (hasLib) resolve(true);
+            else setTimeout(checkLib, 100);
+        };
+        checkLib();
+    });
 }
 
 async function startProcess() {
