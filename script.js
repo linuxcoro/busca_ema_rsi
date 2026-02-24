@@ -11,60 +11,168 @@ const TAKER_FEE = 0.0004;         // 0.04% comisión taker (market orders)
 const MAKER_FEE = 0.0002;         // 0.02% comisión maker (limit orders)
 const USE_FEE = TAKER_FEE;        // Usar taker fee (más conservador)
 
-// ── Patrones de velas japonesas (technicalindicators v2.0.6) ──
-const PATTERN_WINDOW = 5;
-const CANDLE_PATTERNS = {
+// ── Patrones de velas japonesas (implementación propia, sin eval) ──
+function isBullish(o, c) { return c > o; }
+function isBearish(o, c) { return c < o; }
+function bodySize(o, c) { return Math.abs(c - o); }
+function upperShadow(o, h, c) { return h - Math.max(o, c); }
+function lowerShadow(o, l, c) { return Math.min(o, c) - l; }
+function isDoji(o, h, l, c) { return bodySize(o, c) <= (h - l) * 0.1; }
+
+const PATTERN_DETECTORS = {
     bullish: [
-        { name: 'Bullish Engulfing',    fn: 'bullishengulfingpattern',  icon: '🟢', weight: 2 },
-        { name: 'Bullish Harami',       fn: 'bullishharami',            icon: '🟢', weight: 1 },
-        { name: 'Morning Star',         fn: 'morningstar',              icon: '⭐', weight: 2 },
-        { name: 'Morning Doji Star',    fn: 'morningdojistar',          icon: '⭐', weight: 2 },
-        { name: 'Hammer',               fn: 'hammerpattern',            icon: '🔨', weight: 1 },
-        { name: 'Piercing Line',        fn: 'piercingline',             icon: '📈', weight: 1 },
-        { name: 'Three White Soldiers', fn: 'threewhitesoldiers',       icon: '🪖', weight: 2 },
-        { name: 'Tweezer Bottom',       fn: 'tweezerbottom',            icon: '📈', weight: 1 },
+        {
+            name: 'Bullish Engulfing', icon: '🟢', weight: 2,
+            detect: (o, h, l, c, i) => {
+                if (i < 1) return false;
+                return isBearish(o[i-1], c[i-1]) && isBullish(o[i], c[i]) &&
+                       o[i] <= c[i-1] && c[i] >= o[i-1];
+            }
+        },
+        {
+            name: 'Bullish Harami', icon: '🟢', weight: 1,
+            detect: (o, h, l, c, i) => {
+                if (i < 1) return false;
+                return isBearish(o[i-1], c[i-1]) && isBullish(o[i], c[i]) &&
+                       o[i] >= c[i-1] && c[i] <= o[i-1] &&
+                       bodySize(o[i], c[i]) < bodySize(o[i-1], c[i-1]) * 0.6;
+            }
+        },
+        {
+            name: 'Hammer', icon: '🔨', weight: 1,
+            detect: (o, h, l, c, i) => {
+                const body = bodySize(o[i], c[i]);
+                const lower = lowerShadow(o[i], l[i], c[i]);
+                const upper = upperShadow(o[i], h[i], c[i]);
+                return lower >= body * 2 && upper <= body * 0.3 && body > 0;
+            }
+        },
+        {
+            name: 'Morning Star', icon: '⭐', weight: 2,
+            detect: (o, h, l, c, i) => {
+                if (i < 2) return false;
+                return isBearish(o[i-2], c[i-2]) &&
+                       bodySize(o[i-1], c[i-1]) < bodySize(o[i-2], c[i-2]) * 0.3 &&
+                       isBullish(o[i], c[i]) &&
+                       c[i] > (o[i-2] + c[i-2]) / 2;
+            }
+        },
+        {
+            name: 'Piercing Line', icon: '📈', weight: 1,
+            detect: (o, h, l, c, i) => {
+                if (i < 1) return false;
+                const mid = (o[i-1] + c[i-1]) / 2;
+                return isBearish(o[i-1], c[i-1]) && isBullish(o[i], c[i]) &&
+                       o[i] < c[i-1] && c[i] > mid && c[i] < o[i-1];
+            }
+        },
+        {
+            name: 'Three White Soldiers', icon: '🪖', weight: 2,
+            detect: (o, h, l, c, i) => {
+                if (i < 2) return false;
+                return isBullish(o[i-2], c[i-2]) && isBullish(o[i-1], c[i-1]) && isBullish(o[i], c[i]) &&
+                       c[i-1] > c[i-2] && c[i] > c[i-1] &&
+                       o[i-1] > o[i-2] && o[i] > o[i-1];
+            }
+        },
+        {
+            name: 'Tweezer Bottom', icon: '📈', weight: 1,
+            detect: (o, h, l, c, i) => {
+                if (i < 1) return false;
+                const tolerance = (h[i] - l[i]) * 0.05;
+                return isBearish(o[i-1], c[i-1]) && isBullish(o[i], c[i]) &&
+                       Math.abs(l[i] - l[i-1]) <= tolerance;
+            }
+        },
     ],
     bearish: [
-        { name: 'Bearish Engulfing',    fn: 'bearishengulfingpattern',  icon: '🔴', weight: 2 },
-        { name: 'Bearish Harami',       fn: 'bearishharami',            icon: '🔴', weight: 1 },
-        { name: 'Evening Star',         fn: 'eveningstar',              icon: '🌙', weight: 2 },
-        { name: 'Evening Doji Star',    fn: 'eveningdojistar',          icon: '🌙', weight: 2 },
-        { name: 'Shooting Star',        fn: 'shootingstar',             icon: '💫', weight: 1 },
-        { name: 'Dark Cloud Cover',     fn: 'darkcloudcover',           icon: '☁️', weight: 1 },
-        { name: 'Three Black Crows',    fn: 'threeblackcrows',          icon: '🐦', weight: 2 },
-        { name: 'Tweezer Top',          fn: 'tweezertop',               icon: '📉', weight: 1 },
+        {
+            name: 'Bearish Engulfing', icon: '🔴', weight: 2,
+            detect: (o, h, l, c, i) => {
+                if (i < 1) return false;
+                return isBullish(o[i-1], c[i-1]) && isBearish(o[i], c[i]) &&
+                       o[i] >= c[i-1] && c[i] <= o[i-1];
+            }
+        },
+        {
+            name: 'Bearish Harami', icon: '🔴', weight: 1,
+            detect: (o, h, l, c, i) => {
+                if (i < 1) return false;
+                return isBullish(o[i-1], c[i-1]) && isBearish(o[i], c[i]) &&
+                       o[i] <= c[i-1] && c[i] >= o[i-1] &&
+                       bodySize(o[i], c[i]) < bodySize(o[i-1], c[i-1]) * 0.6;
+            }
+        },
+        {
+            name: 'Shooting Star', icon: '💫', weight: 1,
+            detect: (o, h, l, c, i) => {
+                const body = bodySize(o[i], c[i]);
+                const upper = upperShadow(o[i], h[i], c[i]);
+                const lower = lowerShadow(o[i], l[i], c[i]);
+                return upper >= body * 2 && lower <= body * 0.3 && body > 0;
+            }
+        },
+        {
+            name: 'Evening Star', icon: '🌙', weight: 2,
+            detect: (o, h, l, c, i) => {
+                if (i < 2) return false;
+                return isBullish(o[i-2], c[i-2]) &&
+                       bodySize(o[i-1], c[i-1]) < bodySize(o[i-2], c[i-2]) * 0.3 &&
+                       isBearish(o[i], c[i]) &&
+                       c[i] < (o[i-2] + c[i-2]) / 2;
+            }
+        },
+        {
+            name: 'Dark Cloud Cover', icon: '☁️', weight: 1,
+            detect: (o, h, l, c, i) => {
+                if (i < 1) return false;
+                const mid = (o[i-1] + c[i-1]) / 2;
+                return isBullish(o[i-1], c[i-1]) && isBearish(o[i], c[i]) &&
+                       o[i] > c[i-1] && c[i] < mid && c[i] > o[i-1];
+            }
+        },
+        {
+            name: 'Three Black Crows', icon: '🐦', weight: 2,
+            detect: (o, h, l, c, i) => {
+                if (i < 2) return false;
+                return isBearish(o[i-2], c[i-2]) && isBearish(o[i-1], c[i-1]) && isBearish(o[i], c[i]) &&
+                       c[i-1] < c[i-2] && c[i] < c[i-1] &&
+                       o[i-1] < o[i-2] && o[i] < o[i-1];
+            }
+        },
+        {
+            name: 'Tweezer Top', icon: '📉', weight: 1,
+            detect: (o, h, l, c, i) => {
+                if (i < 1) return false;
+                const tolerance = (h[i] - l[i]) * 0.05;
+                return isBullish(o[i-1], c[i-1]) && isBearish(o[i], c[i]) &&
+                       Math.abs(h[i] - h[i-1]) <= tolerance;
+            }
+        },
     ]
 };
 
 function detectCandlePatterns(opens, highs, lows, closes, index) {
-    const start = Math.max(0, index - PATTERN_WINDOW + 1);
-    const input = {
-        open:  opens.slice(start, index + 1),
-        high:  highs.slice(start, index + 1),
-        close: closes.slice(start, index + 1),
-        low:   lows.slice(start, index + 1),
-    };
-
     const bullishPatterns = [];
     const bearishPatterns = [];
     let score = 0;
 
-    for (const p of CANDLE_PATTERNS.bullish) {
+    for (const p of PATTERN_DETECTORS.bullish) {
         try {
-            if (typeof window[p.fn] === 'function' && window[p.fn](input)) {
+            if (p.detect(opens, highs, lows, closes, index)) {
                 bullishPatterns.push(p);
                 score += p.weight;
             }
-        } catch (e) { /* pattern unavailable */ }
+        } catch (e) { /* skip */ }
     }
 
-    for (const p of CANDLE_PATTERNS.bearish) {
+    for (const p of PATTERN_DETECTORS.bearish) {
         try {
-            if (typeof window[p.fn] === 'function' && window[p.fn](input)) {
+            if (p.detect(opens, highs, lows, closes, index)) {
                 bearishPatterns.push(p);
                 score -= p.weight;
             }
-        } catch (e) { /* pattern unavailable */ }
+        } catch (e) { /* skip */ }
     }
 
     return { bullishPatterns, bearishPatterns, score };
@@ -175,18 +283,9 @@ document.querySelectorAll('th.sortable').forEach(th => {
 });
 
 // ── Proceso principal ──────────────────────────
-// Verificar que la librería de patrones está disponible
+// Patrones implementados directamente, no requiere librería externa
 function checkPatternLibrary() {
-    return new Promise((resolve) => {
-        let attempts = 0;
-        const checkLib = () => {
-            attempts++;
-            const hasLib = typeof window.bullishengulfingpattern === 'function' || attempts > 30;
-            if (hasLib) resolve(true);
-            else setTimeout(checkLib, 100);
-        };
-        checkLib();
-    });
+    return Promise.resolve(true);
 }
 
 async function startProcess() {
