@@ -186,6 +186,7 @@ let resultsData = [];  // almacena datos para ordenación
 const DOM = {
     btnStart:       document.getElementById('btnStart'),
     btnText:        document.getElementById('btnText'),
+    btnDownloadCSV: document.getElementById('btnDownloadCSV'),
     status:         document.getElementById('status'),
     tbody:          document.getElementById('resultsBody'),
     progressBar:    document.getElementById('progressBar'),
@@ -264,6 +265,7 @@ function loadConfig() {
 
 // ── Eventos ────────────────────────────────────
 DOM.btnStart.addEventListener('click', startProcess);
+DOM.btnDownloadCSV.addEventListener('click', exportToCSV);
 
 // Guardar configuración cuando cambian los inputs
 document.getElementById('capital').addEventListener('change', saveConfig);
@@ -927,4 +929,68 @@ function markSelectedRow(row) {
     
     // Scroll suave hacia la fila si está fuera de vista
     row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// ── Función de exportación a CSV ──────────────────────────────────
+function exportToCSV() {
+    if (resultsData.length === 0) {
+        alert('No hay datos para exportar. Realiza un escaneo primero.');
+        return;
+    }
+
+    // Crear encabezados
+    const headers = ['#', 'Par', 'ROI %', 'Win Rate %', 'Trades', 'Ganancias', 'Liquidaciones', 'Sin Resolver', 'Patrones', 'Patrones Score', 'Señal'];
+    
+    // Convertir datos
+    const rows = resultsData.map((data, idx) => [
+        idx + 1,
+        data.symbol,
+        data.roiNum.toFixed(2),
+        data.winRateNum.toFixed(2),
+        data.trades,
+        data.wins,
+        data.liquidations,
+        data.unresolvedTrades,
+        data.livePatterns?.bullishPatterns?.map(p => p.icon).join('') + 
+        data.livePatterns?.bearishPatterns?.map(p => p.icon).join('') || '—',
+        data.livePatterns?.score || 0,
+        data.liveSignal || '⏳ ESPERA'
+    ]);
+
+    // Agregar resumen al final
+    const buyCount = resultsData.filter(d => d.liveSignal === 'BUY').length;
+    const sellCount = resultsData.filter(d => d.liveSignal === 'SELL').length;
+    const avgRoi = (resultsData.reduce((sum, d) => sum + d.roiNum, 0) / resultsData.length).toFixed(2);
+    const bestRoi = Math.max(...resultsData.map(d => d.roiNum)).toFixed(2);
+    
+    rows.push([]);
+    rows.push(['RESUMEN', '', '', '', '', '', '', '', '', '', '']);
+    rows.push(['Total Pares', resultsData.length, '', '', '', '', '', '', '', '', '']);
+    rows.push(['Señales Compra', buyCount, '', '', '', '', '', '', '', '', '']);
+    rows.push(['Señales Venta', sellCount, '', '', '', '', '', '', '', '', '']);
+    rows.push(['ROI Promedio', avgRoi + '%', '', '', '', '', '', '', '', '', '']);
+    rows.push(['Mejor ROI', bestRoi + '%', '', '', '', '', '', '', '', '', '']);
+
+    // Convertir a CSV
+    const csvContent = [
+        headers.join(','),
+        ...rows.map(row => row.map(cell => {
+            // Escapar comillas y entrecomillar si contiene comas
+            const str = String(cell).replace(/\"/g, '""');
+            return str.includes(',') ? `"${str}"` : str;
+        }).join(','))
+    ].join('\n');
+
+    // Crear blob y descargar
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const timestamp = new Date().toLocaleString('es-ES').replace(/[/:]/g, '-').split(' ').join('-');
+    
+    link.setAttribute('href', URL.createObjectURL(blob));
+    link.setAttribute('download', `escaneo-${timestamp}.csv`);
+    link.style.visibility = 'hidden';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 }

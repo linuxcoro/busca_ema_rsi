@@ -111,6 +111,18 @@ button:disabled {
     cursor: not-allowed;
 }
 
+button.btn-secondary {
+    background: linear-gradient(135deg, #2b3139, #1e2329);
+    color: #f0b90b;
+    border: 1px solid #f0b90b;
+}
+
+button.btn-secondary:hover:not(:disabled) {
+    background: linear-gradient(135deg, #3a414a, #2b3139);
+    border-color: #fcd535;
+    box-shadow: 0 4px 12px rgba(240, 185, 11, 0.2);
+}
+
 button.scanning {
     animation: pulse-btn 1.5s infinite;
 }
