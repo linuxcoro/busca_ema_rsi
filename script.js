@@ -336,7 +336,12 @@ async function startProcess() {
                     continue;
                 }
 
-                const analysis = runBacktest(klines, params);
+                // Obtener tasas de financiación históricas para el periodo
+                const klStart = parseInt(klines[0][0]);
+                const klEnd = parseInt(klines[klines.length - 1][6]);
+                const fundingRates = await fetchFundingRates(symbol, klStart, klEnd);
+
+                const analysis = runBacktest(klines, params, fundingRates);
                 resultsData.push({ symbol, ...analysis });
                 renderRow(symbol, analysis, resultsData.length);
             } catch (pairErr) {
@@ -384,6 +389,37 @@ async function fetchKlines(symbol, params) {
     return data;
 }
 
+// ── API: obtener tasas de financiación históricas ──
+async function fetchFundingRates(symbol, startTime, endTime) {
+    try {
+        let allRates = [];
+        let currentStart = startTime;
+
+        while (currentStart < endTime) {
+            const url = `${API_BASE}/fundingRate?symbol=${symbol}&startTime=${currentStart}&endTime=${endTime}&limit=1000`;
+            const res = await fetchWithRetry(url);
+            const data = await res.json();
+
+            if (!Array.isArray(data) || data.length === 0) break;
+
+            allRates = allRates.concat(data);
+
+            const lastTime = data[data.length - 1].fundingTime;
+            if (lastTime >= endTime || data.length < 1000) break;
+            currentStart = lastTime + 1;
+        }
+
+        return allRates.map(r => ({
+            time: r.fundingTime,
+            rate: parseFloat(r.fundingRate),
+            markPrice: parseFloat(r.markPrice || 0),
+        }));
+    } catch (err) {
+        console.warn(`⚠️ No se pudieron obtener funding rates para ${symbol}:`, err.message);
+        return [];
+    }
+}
+
 // ── Fetch con reintentos ───────────────────────
 async function fetchWithRetry(url, retries = 3) {
     for (let attempt = 1; attempt <= retries; attempt++) {
@@ -406,7 +442,7 @@ async function fetchWithRetry(url, retries = 3) {
 }
 
 // ── Backtesting ────────────────────────────────
-function runBacktest(klines, params) {
+function runBacktest(klines, params, fundingRates = []) {
     const closes = klines.map(k => parseFloat(k[4]));
     const highs  = klines.map(k => parseFloat(k[2]));
     const lows   = klines.map(k => parseFloat(k[3]));
@@ -432,6 +468,7 @@ function runBacktest(klines, params) {
     let unresolvedTrades = 0;
     let maxDrawdown = 0;
     let peakCapital = capital;
+    let totalFundingCost = 0;
     const tradeDetails = []; // Almacena info detallada de cada trade
 
     for (let i = MIN_CANDLES; i < closes.length - 1; i++) {
@@ -490,11 +527,31 @@ function runBacktest(klines, params) {
             const positionValue = capital * lev;
             const totalFees = positionValue * USE_FEE * 2; // entrada + salida
 
+            // Calcular costo de financiación (funding rate)
+            let fundingCost = 0;
+            let fundingEvents = 0;
+            let fundingRateSum = 0;
+            const tradeEntryTime = klines[i] ? parseInt(klines[i][0]) : 0;
+            const tradeExitTime = klines[exitCandle] ? parseInt(klines[exitCandle][0]) : 0;
+            for (const fr of fundingRates) {
+                if (fr.time >= tradeEntryTime && fr.time <= tradeExitTime) {
+                    // Longs pagan si rate > 0, reciben si rate < 0
+                    // Shorts reciben si rate > 0, pagan si rate < 0
+                    const cost = type === 'long'
+                        ? positionValue * fr.rate
+                        : positionValue * (-fr.rate);
+                    fundingCost += cost;
+                    fundingRateSum += fr.rate;
+                    fundingEvents++;
+                }
+            }
+            totalFundingCost += fundingCost;
+
             let exitPrice;
             if (outcome === 1) {
                 wins++;
                 exitPrice = targetPrice;
-                capital += capital * tpPercent * lev - totalFees;
+                capital += capital * tpPercent * lev - totalFees - fundingCost;
             } else if (outcome === -2) {
                 liquidations++;
                 exitPrice = liqPrice;
@@ -505,7 +562,7 @@ function runBacktest(klines, params) {
                 const pnlPercent = type === 'long'
                     ? (exitPrice - entryPrice) / entryPrice
                     : (entryPrice - exitPrice) / entryPrice;
-                capital += capital * pnlPercent * lev - totalFees;
+                capital += capital * pnlPercent * lev - totalFees - fundingCost;
             }
 
             // Clamp: el capital no puede ser negativo
@@ -564,6 +621,9 @@ function runBacktest(klines, params) {
                 pnlDollar,
                 pnlPct,
                 totalFees,
+                fundingCost,
+                fundingEvents,
+                avgFundingRate: fundingEvents > 0 ? (fundingRateSum / fundingEvents) * 100 : 0,
                 capitalBefore,
                 capitalAfter: capital,
                 sma30: sma30[i],
@@ -645,6 +705,10 @@ function runBacktest(klines, params) {
         momentum:     momentum,
         livePatterns: livePatterns,
         tradeDetails: tradeDetails,
+        totalFundingCost: totalFundingCost,
+        currentFundingRate: fundingRates.length > 0
+            ? (fundingRates[fundingRates.length - 1].rate * 100)
+            : null,
     };
 }
 
@@ -1020,6 +1084,7 @@ function exportToCSV() {
         'Fecha Entrada', 'Fecha Salida', 'Duración (velas)',
         'Precio Entrada', 'Precio Salida', 'Precio TP', 'Precio Liquidación',
         'PnL ($)', 'PnL (%)', 'Comisiones ($)',
+        'Funding Cost ($)', 'Funding Events', 'Funding Rate Prom (%)',
         'Capital Antes ($)', 'Capital Después ($)',
         'SMA 30', 'SMA 50', 'SMA 100', 'SMA 200',
         'RSI (14)', 'Patrones Detectados', 'Score Patrones',
@@ -1046,6 +1111,9 @@ function exportToCSV() {
                 fmtNum(t.pnlDollar, 2),
                 fmtNum(t.pnlPct, 2),
                 fmtNum(t.totalFees, 4),
+                fmtNum(t.fundingCost, 4),
+                t.fundingEvents,
+                fmtNum(t.avgFundingRate, 6),
                 fmtNum(t.capitalBefore, 2),
                 fmtNum(t.capitalAfter, 2),
                 fmtNum(t.sma30),
@@ -1071,7 +1139,8 @@ function exportToCSV() {
     // ═══════════════════════════════════════════════
     const summaryHeaders = [
         'Par', 'ROI %', 'Win Rate %', 'Total Trades', 'Wins', 'Liquidaciones',
-        'Sin Resolver', 'Max Drawdown %', 'Tendencia Actual', 'RSI Actual',
+        'Sin Resolver', 'Max Drawdown %', 'Costo Funding Total ($)', 'Funding Rate Actual (%)',
+        'Tendencia Actual', 'RSI Actual',
         'Volatilidad %', 'Momentum %', 'Señal Viva', 'Patrones Vivos', 'Score Patrones Vivos'
     ];
 
@@ -1084,6 +1153,8 @@ function exportToCSV() {
         data.liquidations,
         data.unresolvedTrades,
         data.maxDrawdown,
+        fmtNum(data.totalFundingCost, 4),
+        data.currentFundingRate != null ? fmtNum(data.currentFundingRate, 6) : 'N/A',
         data.currentTrend,
         fmtNum(data.currentRSI, 2),
         fmtNum(data.volatility, 2),
@@ -1109,8 +1180,10 @@ function exportToCSV() {
     const shortWins = tradeRows.filter(r => r[2] === 'SHORT' && r[3] === 'TP').length;
     const avgPnlPct = totalTrades > 0 ? (tradeRows.reduce((s, r) => s + parseFloat(r[12] || 0), 0) / totalTrades) : 0;
     const avgDuration = totalTrades > 0 ? (tradeRows.reduce((s, r) => s + (parseInt(r[6]) || 0), 0) / totalTrades) : 0;
-    const avgMAE = totalTrades > 0 ? (tradeRows.reduce((s, r) => s + parseFloat(r[23] || 0), 0) / totalTrades) : 0;
-    const avgMFE = totalTrades > 0 ? (tradeRows.reduce((s, r) => s + parseFloat(r[24] || 0), 0) / totalTrades) : 0;
+    const avgMAE = totalTrades > 0 ? (tradeRows.reduce((s, r) => s + parseFloat(r[26] || 0), 0) / totalTrades) : 0;
+    const avgMFE = totalTrades > 0 ? (tradeRows.reduce((s, r) => s + parseFloat(r[27] || 0), 0) / totalTrades) : 0;
+    const sumFundingCost = tradeRows.reduce((s, r) => s + parseFloat(r[14] || 0), 0);
+    const avgFundingPerTrade = totalTrades > 0 ? (sumFundingCost / totalTrades) : 0;
     const buySignals = resultsData.filter(d => d.liveSignal === 'BUY').length;
     const sellSignals = resultsData.filter(d => d.liveSignal === 'SELL').length;
     const avgRoi = resultsData.length > 0 ? (resultsData.reduce((s, d) => s + d.roiNum, 0) / resultsData.length) : 0;
@@ -1138,6 +1211,10 @@ function exportToCSV() {
         ['Duración Promedio (velas)', avgDuration.toFixed(1)],
         ['MAE Promedio', `${avgMAE.toFixed(2)}%`],
         ['MFE Promedio', `${avgMFE.toFixed(2)}%`],
+        ['', ''],
+        ['COSTOS DE FINANCIACIÓN', ''],
+        ['Funding Total ($)', `$${sumFundingCost.toFixed(4)}`],
+        ['Funding Promedio por Trade ($)', `$${avgFundingPerTrade.toFixed(4)}`],
         ['', ''],
         ['LONGS vs SHORTS', ''],
         ['Total Longs', totalLongs],
