@@ -419,6 +419,9 @@ function runBacktest(klines, params) {
     const sma50  = calculateSMA(closes, 50);
     const sma30  = calculateSMA(closes, 30);
 
+    // RSI para toda la serie (necesario para registrar RSI en cada trade)
+    const rsi14Full = calculateRSI(closes, 14);
+
     let capital = params.capital;
     const initialCapital = capital;
     const { leverage: lev, tpPercent } = params;
@@ -429,6 +432,7 @@ function runBacktest(klines, params) {
     let unresolvedTrades = 0;
     let maxDrawdown = 0;
     let peakCapital = capital;
+    const tradeDetails = []; // Almacena info detallada de cada trade
 
     for (let i = MIN_CANDLES; i < closes.length - 1; i++) {
         const price = closes[i];
@@ -458,6 +462,7 @@ function runBacktest(klines, params) {
 
         if (type) {
             trades++;
+            const capitalBefore = capital;
             const entryPrice = price;
             const targetPrice = type === 'long'
                 ? entryPrice * (1 + tpPercent)
@@ -485,18 +490,18 @@ function runBacktest(klines, params) {
             const positionValue = capital * lev;
             const totalFees = positionValue * USE_FEE * 2; // entrada + salida
 
+            let exitPrice;
             if (outcome === 1) {
                 wins++;
-                // Ganancia: TP alcanzado menos comisiones
+                exitPrice = targetPrice;
                 capital += capital * tpPercent * lev - totalFees;
             } else if (outcome === -2) {
                 liquidations++;
-                // Liquidación: pérdida total del margen (capital asignado al trade)
+                exitPrice = liqPrice;
                 capital = 0;
             } else {
-                // Trade sin resolver: cerrar al precio de cierre de última vela
                 unresolvedTrades++;
-                const exitPrice = closes[exitCandle];
+                exitPrice = closes[exitCandle];
                 const pnlPercent = type === 'long'
                     ? (exitPrice - entryPrice) / entryPrice
                     : (entryPrice - exitPrice) / entryPrice;
@@ -512,6 +517,70 @@ function runBacktest(klines, params) {
                 ? ((peakCapital - capital) / peakCapital) * 100
                 : 0;
             maxDrawdown = Math.max(maxDrawdown, drawdown);
+
+            // ── Registrar detalle del trade ──
+            const entryTime = klines[i] ? parseInt(klines[i][0]) : null;
+            const exitTime  = klines[exitCandle] ? parseInt(klines[exitCandle][0]) : null;
+            const duration  = exitCandle - i;
+            const pnlDollar = capital - capitalBefore;
+            const pnlPct    = capitalBefore > 0 ? (pnlDollar / capitalBefore) * 100 : -100;
+            const outcomeLabel = outcome === 1 ? 'TP' : outcome === -2 ? 'LIQUIDADO' : 'TIMEOUT';
+
+            // Max Adverse Excursion (peor movimiento en contra durante el trade)
+            let mae = 0;
+            for (let j = i + 1; j <= exitCandle; j++) {
+                const adverse = type === 'long'
+                    ? (entryPrice - lows[j]) / entryPrice * 100
+                    : (highs[j] - entryPrice) / entryPrice * 100;
+                mae = Math.max(mae, adverse);
+            }
+
+            // Max Favorable Excursion (mejor movimiento a favor durante el trade)
+            let mfe = 0;
+            for (let j = i + 1; j <= exitCandle; j++) {
+                const favorable = type === 'long'
+                    ? (highs[j] - entryPrice) / entryPrice * 100
+                    : (entryPrice - lows[j]) / entryPrice * 100;
+                mfe = Math.max(mfe, favorable);
+            }
+
+            // Patrones detectados en la vela de entrada
+            const patternNames = [
+                ...btPatterns.bullishPatterns.map(p => p.name),
+                ...btPatterns.bearishPatterns.map(p => p.name)
+            ].join(' | ') || 'Ninguno';
+
+            tradeDetails.push({
+                tradeNum: trades,
+                type,
+                entryTime,
+                exitTime,
+                entryPrice,
+                exitPrice,
+                targetPrice,
+                liqPrice,
+                outcome: outcomeLabel,
+                duration,
+                pnlDollar,
+                pnlPct,
+                totalFees,
+                capitalBefore,
+                capitalAfter: capital,
+                sma30: sma30[i],
+                sma50: sma50[i],
+                sma100: sma100[i],
+                sma200: sma200[i],
+                rsiEntry: rsi14Full[i],
+                patternNames,
+                patternScore: btPatterns.score,
+                mae,
+                mfe,
+                entryOpen: opens[i],
+                entryHigh: highs[i],
+                entryLow: lows[i],
+                entryClose: closes[i],
+                entryVolume: klines[i] ? parseFloat(klines[i][5]) : 0,
+            });
 
             i += TRADE_COOLDOWN;
         }
@@ -575,6 +644,7 @@ function runBacktest(klines, params) {
         volatility:   volatility,
         momentum:     momentum,
         livePatterns: livePatterns,
+        tradeDetails: tradeDetails,
     };
 }
 
@@ -938,59 +1008,195 @@ function exportToCSV() {
         return;
     }
 
-    // Crear encabezados
-    const headers = ['#', 'Par', 'ROI %', 'Win Rate %', 'Trades', 'Ganancias', 'Liquidaciones', 'Sin Resolver', 'Patrones', 'Patrones Score', 'Señal'];
-    
-    // Convertir datos
-    const rows = resultsData.map((data, idx) => [
-        idx + 1,
+    const params = getParams();
+    const fmtDate = (ts) => ts ? new Date(ts).toISOString().replace('T', ' ').slice(0, 19) : '';
+    const fmtNum = (n, dec = 4) => n != null ? Number(n).toFixed(dec) : '';
+
+    // ═══════════════════════════════════════════════
+    //  HOJA 1: TODAS LAS OPERACIONES INDIVIDUALES
+    // ═══════════════════════════════════════════════
+    const tradeHeaders = [
+        'Par', 'Trade #', 'Tipo', 'Resultado',
+        'Fecha Entrada', 'Fecha Salida', 'Duración (velas)',
+        'Precio Entrada', 'Precio Salida', 'Precio TP', 'Precio Liquidación',
+        'PnL ($)', 'PnL (%)', 'Comisiones ($)',
+        'Capital Antes ($)', 'Capital Después ($)',
+        'SMA 30', 'SMA 50', 'SMA 100', 'SMA 200',
+        'RSI (14)', 'Patrones Detectados', 'Score Patrones',
+        'MAE (%)', 'MFE (%)',
+        'Vela Open', 'Vela High', 'Vela Low', 'Vela Close', 'Volumen'
+    ];
+
+    const tradeRows = [];
+    for (const data of resultsData) {
+        if (!data.tradeDetails || data.tradeDetails.length === 0) continue;
+        for (const t of data.tradeDetails) {
+            tradeRows.push([
+                data.symbol,
+                t.tradeNum,
+                t.type === 'long' ? 'LONG' : 'SHORT',
+                t.outcome,
+                fmtDate(t.entryTime),
+                fmtDate(t.exitTime),
+                t.duration,
+                fmtNum(t.entryPrice),
+                fmtNum(t.exitPrice),
+                fmtNum(t.targetPrice),
+                fmtNum(t.liqPrice),
+                fmtNum(t.pnlDollar, 2),
+                fmtNum(t.pnlPct, 2),
+                fmtNum(t.totalFees, 4),
+                fmtNum(t.capitalBefore, 2),
+                fmtNum(t.capitalAfter, 2),
+                fmtNum(t.sma30),
+                fmtNum(t.sma50),
+                fmtNum(t.sma100),
+                fmtNum(t.sma200),
+                fmtNum(t.rsiEntry, 2),
+                t.patternNames,
+                t.patternScore,
+                fmtNum(t.mae, 2),
+                fmtNum(t.mfe, 2),
+                fmtNum(t.entryOpen),
+                fmtNum(t.entryHigh),
+                fmtNum(t.entryLow),
+                fmtNum(t.entryClose),
+                fmtNum(t.entryVolume, 2),
+            ]);
+        }
+    }
+
+    // ═══════════════════════════════════════════════
+    //  HOJA 2: RESUMEN POR PAR
+    // ═══════════════════════════════════════════════
+    const summaryHeaders = [
+        'Par', 'ROI %', 'Win Rate %', 'Total Trades', 'Wins', 'Liquidaciones',
+        'Sin Resolver', 'Max Drawdown %', 'Tendencia Actual', 'RSI Actual',
+        'Volatilidad %', 'Momentum %', 'Señal Viva', 'Patrones Vivos', 'Score Patrones Vivos'
+    ];
+
+    const summaryRows = resultsData.map(data => [
         data.symbol,
-        data.roiNum.toFixed(2),
-        data.winRateNum.toFixed(2),
+        fmtNum(data.roiNum, 2),
+        fmtNum(data.winRateNum, 2),
         data.trades,
         data.wins,
         data.liquidations,
         data.unresolvedTrades,
-        data.livePatterns?.bullishPatterns?.map(p => p.icon).join('') + 
-        data.livePatterns?.bearishPatterns?.map(p => p.icon).join('') || '—',
+        data.maxDrawdown,
+        data.currentTrend,
+        fmtNum(data.currentRSI, 2),
+        fmtNum(data.volatility, 2),
+        fmtNum(data.momentum, 2),
+        data.liveSignal || 'ESPERA',
+        [
+            ...(data.livePatterns?.bullishPatterns?.map(p => p.name) || []),
+            ...(data.livePatterns?.bearishPatterns?.map(p => p.name) || []),
+        ].join(' | ') || 'Ninguno',
         data.livePatterns?.score || 0,
-        data.liveSignal || '⏳ ESPERA'
     ]);
 
-    // Agregar resumen al final
-    const buyCount = resultsData.filter(d => d.liveSignal === 'BUY').length;
-    const sellCount = resultsData.filter(d => d.liveSignal === 'SELL').length;
-    const avgRoi = (resultsData.reduce((sum, d) => sum + d.roiNum, 0) / resultsData.length).toFixed(2);
-    const bestRoi = Math.max(...resultsData.map(d => d.roiNum)).toFixed(2);
-    
-    rows.push([]);
-    rows.push(['RESUMEN', '', '', '', '', '', '', '', '', '', '']);
-    rows.push(['Total Pares', resultsData.length, '', '', '', '', '', '', '', '', '']);
-    rows.push(['Señales Compra', buyCount, '', '', '', '', '', '', '', '', '']);
-    rows.push(['Señales Venta', sellCount, '', '', '', '', '', '', '', '', '']);
-    rows.push(['ROI Promedio', avgRoi + '%', '', '', '', '', '', '', '', '', '']);
-    rows.push(['Mejor ROI', bestRoi + '%', '', '', '', '', '', '', '', '', '']);
+    // ═══════════════════════════════════════════════
+    //  HOJA 3: ESTADÍSTICAS GLOBALES
+    // ═══════════════════════════════════════════════
+    const totalTrades = tradeRows.length;
+    const totalWins = tradeRows.filter(r => r[3] === 'TP').length;
+    const totalLiqs = tradeRows.filter(r => r[3] === 'LIQUIDADO').length;
+    const totalTimeout = tradeRows.filter(r => r[3] === 'TIMEOUT').length;
+    const totalLongs = tradeRows.filter(r => r[2] === 'LONG').length;
+    const totalShorts = tradeRows.filter(r => r[2] === 'SHORT').length;
+    const longWins = tradeRows.filter(r => r[2] === 'LONG' && r[3] === 'TP').length;
+    const shortWins = tradeRows.filter(r => r[2] === 'SHORT' && r[3] === 'TP').length;
+    const avgPnlPct = totalTrades > 0 ? (tradeRows.reduce((s, r) => s + parseFloat(r[12] || 0), 0) / totalTrades) : 0;
+    const avgDuration = totalTrades > 0 ? (tradeRows.reduce((s, r) => s + (parseInt(r[6]) || 0), 0) / totalTrades) : 0;
+    const avgMAE = totalTrades > 0 ? (tradeRows.reduce((s, r) => s + parseFloat(r[23] || 0), 0) / totalTrades) : 0;
+    const avgMFE = totalTrades > 0 ? (tradeRows.reduce((s, r) => s + parseFloat(r[24] || 0), 0) / totalTrades) : 0;
+    const buySignals = resultsData.filter(d => d.liveSignal === 'BUY').length;
+    const sellSignals = resultsData.filter(d => d.liveSignal === 'SELL').length;
+    const avgRoi = resultsData.length > 0 ? (resultsData.reduce((s, d) => s + d.roiNum, 0) / resultsData.length) : 0;
+    const bestPair = resultsData.reduce((best, r) => r.roiNum > best.roiNum ? r : best, resultsData[0]);
+    const worstPair = resultsData.reduce((worst, r) => r.roiNum < worst.roiNum ? r : worst, resultsData[0]);
 
-    // Convertir a CSV
-    const csvContent = [
-        headers.join(','),
-        ...rows.map(row => row.map(cell => {
-            // Escapar comillas y entrecomillar si contiene comas
-            const str = String(cell).replace(/\"/g, '""');
-            return str.includes(',') ? `"${str}"` : str;
-        }).join(','))
-    ].join('\n');
+    const statsRows = [
+        ['CONFIGURACIÓN', ''],
+        ['Capital Inicial', `$${params.capital}`],
+        ['Apalancamiento', `${params.leverage}x`],
+        ['Timeframe', params.timeframe],
+        ['Take Profit', `${(params.tpPercent * 100).toFixed(1)}%`],
+        ['Cant. Velas', params.limitVelas],
+        ['Modo Patrones', params.patternMode],
+        ['Fecha Escaneo', new Date().toISOString()],
+        ['', ''],
+        ['ESTADÍSTICAS GLOBALES', ''],
+        ['Total Pares Analizados', resultsData.length],
+        ['Total Operaciones', totalTrades],
+        ['Operaciones Ganadoras (TP)', totalWins],
+        ['Operaciones Liquidadas', totalLiqs],
+        ['Operaciones Timeout', totalTimeout],
+        ['Win Rate Global', `${totalTrades > 0 ? ((totalWins / totalTrades) * 100).toFixed(2) : 0}%`],
+        ['PnL Promedio por Trade', `${avgPnlPct.toFixed(2)}%`],
+        ['Duración Promedio (velas)', avgDuration.toFixed(1)],
+        ['MAE Promedio', `${avgMAE.toFixed(2)}%`],
+        ['MFE Promedio', `${avgMFE.toFixed(2)}%`],
+        ['', ''],
+        ['LONGS vs SHORTS', ''],
+        ['Total Longs', totalLongs],
+        ['Total Shorts', totalShorts],
+        ['Win Rate Longs', `${totalLongs > 0 ? ((longWins / totalLongs) * 100).toFixed(2) : 0}%`],
+        ['Win Rate Shorts', `${totalShorts > 0 ? ((shortWins / totalShorts) * 100).toFixed(2) : 0}%`],
+        ['', ''],
+        ['RENDIMIENTO', ''],
+        ['ROI Promedio por Par', `${avgRoi.toFixed(2)}%`],
+        ['Mejor Par', `${bestPair.symbol} (${bestPair.roi}%)`],
+        ['Peor Par', `${worstPair.symbol} (${worstPair.roi}%)`],
+        ['Señales de Compra Activas', buySignals],
+        ['Señales de Venta Activas', sellSignals],
+    ];
+
+    // ═══════════════════════════════════════════════
+    //  CONSTRUIR CSV COMBINADO
+    // ═══════════════════════════════════════════════
+    const escapeCSV = (cell) => {
+        const str = String(cell == null ? '' : cell).replace(/"/g, '""');
+        return (str.includes(',') || str.includes('"') || str.includes('\n')) ? `"${str}"` : str;
+    };
+
+    const sections = [];
+
+    // Sección: Operaciones
+    sections.push('═══ TODAS LAS OPERACIONES ═══');
+    sections.push(tradeHeaders.map(escapeCSV).join(','));
+    for (const row of tradeRows) {
+        sections.push(row.map(escapeCSV).join(','));
+    }
+
+    sections.push('');
+    sections.push('═══ RESUMEN POR PAR ═══');
+    sections.push(summaryHeaders.map(escapeCSV).join(','));
+    for (const row of summaryRows) {
+        sections.push(row.map(escapeCSV).join(','));
+    }
+
+    sections.push('');
+    sections.push('═══ ESTADÍSTICAS Y CONFIGURACIÓN ═══');
+    for (const row of statsRows) {
+        sections.push(row.map(escapeCSV).join(','));
+    }
+
+    const csvContent = '\uFEFF' + sections.join('\n'); // BOM para Excel
 
     // Crear blob y descargar
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
-    const timestamp = new Date().toLocaleString('es-ES').replace(/[/:]/g, '-').split(' ').join('-');
-    
+    const timestamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');
+
     link.setAttribute('href', URL.createObjectURL(blob));
-    link.setAttribute('download', `escaneo-${timestamp}.csv`);
+    link.setAttribute('download', `operaciones-backtest-${timestamp}.csv`);
     link.style.visibility = 'hidden';
-    
+
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+
+    showNotification(`CSV exportado: ${tradeRows.length} operaciones de ${resultsData.length} pares`, 'info');
 }
