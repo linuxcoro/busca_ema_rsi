@@ -181,6 +181,7 @@ function detectCandlePatterns(opens, highs, lows, closes, index) {
 // ── Estado global ──────────────────────────────
 let isScanning = false;
 let resultsData = [];  // almacena datos para ordenación
+let fearGreedData = null; // almacena el último Fear & Greed global
 
 // ── Elementos del DOM (cache) ──────────────────
 const DOM = {
@@ -334,10 +335,11 @@ async function startProcess() {
         // Obtener datos de sentimiento (gratuitos)
         DOM.status.textContent = "Obteniendo datos de sentimiento del mercado...";
         const coingeckoKey = document.getElementById('coingeckoKey').value.trim();
-        const [fearGreedData, geckoList] = await Promise.all([
+        const [latestFearGreedData, geckoList] = await Promise.all([
             fetchFearGreedIndex(),
             coingeckoKey ? fetchCoinGeckoList(coingeckoKey) : Promise.resolve(null)
         ]);
+        fearGreedData = latestFearGreedData;
 
         const sentimentMap = new Map();
 
@@ -1383,6 +1385,13 @@ function exportToCSV() {
     const buySignals = resultsData.filter(d => d.liveSignal === 'BUY').length;
     const sellSignals = resultsData.filter(d => d.liveSignal === 'SELL').length;
     const avgRoi = resultsData.length > 0 ? (resultsData.reduce((s, d) => s + d.roiNum, 0) / resultsData.length) : 0;
+    const sentimentResults = resultsData.filter(r => r.sentiment);
+    const avgSentimentUp = sentimentResults.length > 0
+        ? sentimentResults.reduce((s, r) => s + (r.sentiment.sentimentUp || 0), 0) / sentimentResults.length
+        : null;
+    const avgDevCommits = sentimentResults.length > 0
+        ? sentimentResults.reduce((s, r) => s + (r.sentiment.githubCommits || 0), 0) / sentimentResults.length
+        : null;
     const bestPair = resultsData.reduce((best, r) => r.roiNum > best.roiNum ? r : best, resultsData[0]);
     const worstPair = resultsData.reduce((worst, r) => r.roiNum < worst.roiNum ? r : worst, resultsData[0]);
 
