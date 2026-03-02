@@ -230,6 +230,7 @@ function getParams() {
         limitVelas: parseInt(document.getElementById('limitKlines').value) || 500,
         topPairs:     parseInt(document.getElementById('topPairs').value)    || 20,
         patternMode:  document.getElementById('patternMode').value          || 'off',
+        tradingMode:  document.getElementById('tradingMode').value          || 'real',
     };
 }
 
@@ -245,6 +246,7 @@ function saveConfig() {
         limitKlines: document.getElementById('limitKlines').value,
         topPairs:    document.getElementById('topPairs').value,
         patternMode: document.getElementById('patternMode').value,
+        tradingMode: document.getElementById('tradingMode').value,
         coingeckoKey: document.getElementById('coingeckoKey').value,
     };
     localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
@@ -262,6 +264,7 @@ function loadConfig() {
             if (config.limitKlines) document.getElementById('limitKlines').value = config.limitKlines;
             if (config.topPairs)    document.getElementById('topPairs').value    = config.topPairs;
             if (config.patternMode) document.getElementById('patternMode').value = config.patternMode;
+            if (config.tradingMode) document.getElementById('tradingMode').value = config.tradingMode;
             if (config.coingeckoKey) document.getElementById('coingeckoKey').value = config.coingeckoKey;
         } catch (err) {
             console.warn('Error cargando configuración:', err);
@@ -278,6 +281,7 @@ document.getElementById('capital').addEventListener('change', saveConfig);
 document.getElementById('leverage').addEventListener('change', saveConfig);
 document.getElementById('timeframe').addEventListener('change', saveConfig);
 document.getElementById('tp').addEventListener('change', saveConfig);
+document.getElementById('tradingMode').addEventListener('change', saveConfig);
 document.getElementById('limitKlines').addEventListener('change', saveConfig);
 document.getElementById('topPairs').addEventListener('change', saveConfig);
 document.getElementById('patternMode').addEventListener('change', saveConfig);
@@ -337,7 +341,7 @@ async function startProcess() {
         const coingeckoKey = document.getElementById('coingeckoKey').value.trim();
         const [latestFearGreedData, geckoList] = await Promise.all([
             fetchFearGreedIndex(),
-            coingeckoKey ? fetchCoinGeckoList(coingeckoKey) : Promise.resolve(null)
+            fetchCoinGeckoList(coingeckoKey)
         ]);
         fearGreedData = latestFearGreedData;
 
@@ -361,7 +365,7 @@ async function startProcess() {
 
                 // Obtener sentimiento por coin (con delay para rate limit)
                 let sentimentData = null;
-                if (coingeckoKey && geckoList) {
+                if (geckoList) {
                     const geckoId = mapBinanceToGeckoId(symbol, geckoList);
                     if (geckoId) {
                         sentimentData = await fetchCoinGeckoSentiment(geckoId, coingeckoKey);
@@ -487,15 +491,14 @@ let coingeckoListCache = null;
 let coingeckoListCacheTime = 0;
 
 async function fetchCoinGeckoList(apiKey) {
-    if (!apiKey) return null;
-
     const now = Date.now();
     if (coingeckoListCache && (now - coingeckoListCacheTime) < 24 * 60 * 60 * 1000) {
         return coingeckoListCache;
     }
 
     try {
-        const url = `https://api.coingecko.com/api/v3/coins/list?x_cg_demo_api_key=${apiKey}`;
+        const keyParam = apiKey ? `?x_cg_demo_api_key=${encodeURIComponent(apiKey)}` : '';
+        const url = `https://api.coingecko.com/api/v3/coins/list${keyParam}`;
         const res = await fetch(url);
         const data = await res.json();
         if (Array.isArray(data)) {
@@ -510,10 +513,11 @@ async function fetchCoinGeckoList(apiKey) {
 }
 
 async function fetchCoinGeckoSentiment(coinId, apiKey) {
-    if (!apiKey || !coinId) return null;
+    if (!coinId) return null;
 
     try {
-        const url = `https://api.coingecko.com/api/v3/coins/${coinId}?localization=false&tickers=false&market_data=false&community_data=true&developer_data=true&sparkline=false&x_cg_demo_api_key=${apiKey}`;
+        const keyParam = apiKey ? `&x_cg_demo_api_key=${encodeURIComponent(apiKey)}` : '';
+        const url = `https://api.coingecko.com/api/v3/coins/${coinId}?localization=false&tickers=false&market_data=false&community_data=true&developer_data=true&sparkline=false${keyParam}`;
         const res = await fetch(url);
         const data = await res.json();
         if (data && data.sentiment_votes_up_percentage !== undefined) {
@@ -534,9 +538,17 @@ async function fetchCoinGeckoSentiment(coinId, apiKey) {
 
 function mapBinanceToGeckoId(symbol, geckoList) {
     if (!geckoList) return null;
-    const base = symbol.replace('USDT', '').toLowerCase();
-    const coin = geckoList.find(c => c.symbol === base);
-    return coin ? coin.id : null;
+    const rawBase = symbol.replace('USDT', '').toLowerCase();
+    const normalizedBase = rawBase
+        .replace(/^1000/, '')
+        .replace(/(up|down|bull|bear)$/, '');
+
+    const candidates = [...new Set([rawBase, normalizedBase].filter(Boolean))];
+    for (const candidate of candidates) {
+        const coin = geckoList.find(c => c.symbol === candidate);
+        if (coin) return coin.id;
+    }
+    return null;
 }
 
 // ── Fetch con reintentos ───────────────────────
@@ -1049,7 +1061,9 @@ function renderRow(symbol, analysis, index) {
     const roiClass = parseFloat(analysis.roi) >= 0 ? 'pos' : 'neg';
     const wrClass  = parseFloat(analysis.winRate) >= 50 ? 'pos' : 'neg';
 
-    const binanceUrl = `https://www.binance.com/es-LA/futures/${symbol}`;
+    const tradingMode = document.getElementById('tradingMode').value;
+    const baseUrl = tradingMode === 'demo' ? 'https://demo.binance.com' : 'https://www.binance.com';
+    const binanceUrl = `${baseUrl}/es-LA/futures/${symbol}`;
 
     // Build pattern badges
     let patternBadges = '<span style="color:#474d57">—</span>';
