@@ -214,6 +214,9 @@ const DOM = {
     chipVolatility:   document.getElementById('chipVolatility'),
     chipMomentum:     document.getElementById('chipMomentum'),
     chipPatterns:     document.getElementById('chipPatterns'),
+    chipFearGreed:    document.getElementById('chipFearGreed'),
+    chipSocialSentiment: document.getElementById('chipSocialSentiment'),
+    chipDevActivity:  document.getElementById('chipDevActivity'),
 };
 
 // ── Leer parámetros del usuario ────────────────
@@ -241,6 +244,7 @@ function saveConfig() {
         limitKlines: document.getElementById('limitKlines').value,
         topPairs:    document.getElementById('topPairs').value,
         patternMode: document.getElementById('patternMode').value,
+        coingeckoKey: document.getElementById('coingeckoKey').value,
     };
     localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
 }
@@ -257,6 +261,7 @@ function loadConfig() {
             if (config.limitKlines) document.getElementById('limitKlines').value = config.limitKlines;
             if (config.topPairs)    document.getElementById('topPairs').value    = config.topPairs;
             if (config.patternMode) document.getElementById('patternMode').value = config.patternMode;
+            if (config.coingeckoKey) document.getElementById('coingeckoKey').value = config.coingeckoKey;
         } catch (err) {
             console.warn('Error cargando configuración:', err);
         }
@@ -275,6 +280,7 @@ document.getElementById('tp').addEventListener('change', saveConfig);
 document.getElementById('limitKlines').addEventListener('change', saveConfig);
 document.getElementById('topPairs').addEventListener('change', saveConfig);
 document.getElementById('patternMode').addEventListener('change', saveConfig);
+document.getElementById('coingeckoKey').addEventListener('change', saveConfig);
 
 // Cargar configuración guardada al iniciar
 document.addEventListener('DOMContentLoaded', loadConfig);
@@ -325,6 +331,16 @@ async function startProcess() {
             throw new Error("No se encontraron pares USDT en Binance Futures.");
         }
 
+        // Obtener datos de sentimiento (gratuitos)
+        DOM.status.textContent = "Obteniendo datos de sentimiento del mercado...";
+        const coingeckoKey = document.getElementById('coingeckoKey').value.trim();
+        const [fearGreedData, geckoList] = await Promise.all([
+            fetchFearGreedIndex(),
+            coingeckoKey ? fetchCoinGeckoList(coingeckoKey) : Promise.resolve(null)
+        ]);
+
+        const sentimentMap = new Map();
+
         for (let idx = 0; idx < topPairs.length; idx++) {
             const symbol = topPairs[idx];
             DOM.status.textContent = `Analizando ${symbol} (${idx + 1}/${topPairs.length})...`;
@@ -341,8 +357,21 @@ async function startProcess() {
                 const klEnd = parseInt(klines[klines.length - 1][6]);
                 const fundingRates = await fetchFundingRates(symbol, klStart, klEnd);
 
+                // Obtener sentimiento por coin (con delay para rate limit)
+                let sentimentData = null;
+                if (coingeckoKey && geckoList) {
+                    const geckoId = mapBinanceToGeckoId(symbol, geckoList);
+                    if (geckoId) {
+                        sentimentData = await fetchCoinGeckoSentiment(geckoId, coingeckoKey);
+                        // Delay 2s para respetar ~30 req/min
+                        if (idx < topPairs.length - 1) await new Promise(r => setTimeout(r, 2000));
+                    }
+                }
+
                 const analysis = runBacktest(klines, params, fundingRates);
-                resultsData.push({ symbol, ...analysis });
+                const result = { symbol, ...analysis, sentiment: sentimentData };
+                resultsData.push(result);
+                sentimentMap.set(symbol, sentimentData);
                 renderRow(symbol, analysis, resultsData.length);
             } catch (pairErr) {
                 console.warn(`⚠️ Error analizando ${symbol}:`, pairErr.message);
@@ -418,6 +447,94 @@ async function fetchFundingRates(symbol, startTime, endTime) {
         console.warn(`⚠️ No se pudieron obtener funding rates para ${symbol}:`, err.message);
         return [];
     }
+}
+
+// ── APIs de Sentimiento Gratuitas ──────────────
+
+// Cache para Fear & Greed (24h)
+let fearGreedCache = null;
+let fearGreedCacheTime = 0;
+
+async function fetchFearGreedIndex() {
+    const now = Date.now();
+    if (fearGreedCache && (now - fearGreedCacheTime) < 24 * 60 * 60 * 1000) {
+        return fearGreedCache;
+    }
+
+    try {
+        const res = await fetch('https://api.alternative.me/fng/?limit=7');
+        const data = await res.json();
+        if (data && data.data && data.data.length > 0) {
+            const latest = data.data[0];
+            fearGreedCache = {
+                value: parseInt(latest.value),
+                classification: latest.value_classification,
+                timestamp: parseInt(latest.timestamp),
+            };
+            fearGreedCacheTime = now;
+            return fearGreedCache;
+        }
+    } catch (err) {
+        console.warn('⚠️ Error obteniendo Fear & Greed Index:', err.message);
+    }
+    return null;
+}
+
+// Cache para lista de coins CoinGecko (24h)
+let coingeckoListCache = null;
+let coingeckoListCacheTime = 0;
+
+async function fetchCoinGeckoList(apiKey) {
+    if (!apiKey) return null;
+
+    const now = Date.now();
+    if (coingeckoListCache && (now - coingeckoListCacheTime) < 24 * 60 * 60 * 1000) {
+        return coingeckoListCache;
+    }
+
+    try {
+        const url = `https://api.coingecko.com/api/v3/coins/list?x_cg_demo_api_key=${apiKey}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (Array.isArray(data)) {
+            coingeckoListCache = data;
+            coingeckoListCacheTime = now;
+            return data;
+        }
+    } catch (err) {
+        console.warn('⚠️ Error obteniendo lista CoinGecko:', err.message);
+    }
+    return null;
+}
+
+async function fetchCoinGeckoSentiment(coinId, apiKey) {
+    if (!apiKey || !coinId) return null;
+
+    try {
+        const url = `https://api.coingecko.com/api/v3/coins/${coinId}?localization=false&tickers=false&market_data=false&community_data=true&developer_data=true&sparkline=false&x_cg_demo_api_key=${apiKey}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data && data.sentiment_votes_up_percentage !== undefined) {
+            return {
+                sentimentUp: data.sentiment_votes_up_percentage,
+                sentimentDown: data.sentiment_votes_down_percentage,
+                telegramUsers: data.community_data?.telegram_channel_user_count || 0,
+                githubCommits: data.developer_data?.commit_count_4_weeks || 0,
+                githubStars: data.developer_data?.stars || 0,
+                githubForks: data.developer_data?.forks || 0,
+            };
+        }
+    } catch (err) {
+        console.warn(`⚠️ Error obteniendo sentimiento para ${coinId}:`, err.message);
+    }
+    return null;
+}
+
+function mapBinanceToGeckoId(symbol, geckoList) {
+    if (!geckoList) return null;
+    const base = symbol.replace('USDT', '').toLowerCase();
+    const coin = geckoList.find(c => c.symbol === base);
+    return coin ? coin.id : null;
 }
 
 // ── Fetch con reintentos ───────────────────────
@@ -765,6 +882,15 @@ function updateMarketSentiment() {
     const avgVolatility = resultsData.reduce((s, r) => s + (r.volatility || 0), 0) / total;
     const avgMomentum = resultsData.reduce((s, r) => s + (r.momentum || 0), 0) / total;
 
+    // Datos de sentimiento social
+    const sentimentResults = resultsData.filter(r => r.sentiment);
+    const avgSentimentUp = sentimentResults.length > 0 ? sentimentResults.reduce((s, r) => s + (r.sentiment.sentimentUp || 0), 0) / sentimentResults.length : null;
+    const avgDevCommits = sentimentResults.length > 0 ? sentimentResults.reduce((s, r) => s + (r.sentiment.githubCommits || 0), 0) / sentimentResults.length : null;
+
+    // Fear & Greed (global, no por coin)
+    const fearGreedValue = fearGreedData ? fearGreedData.value : null;
+    const fearGreedClass = fearGreedData ? fearGreedData.classification : null;
+
     // BTC trend (buscar BTCUSDT en resultados)
     const btcData = resultsData.find(r => r.symbol === 'BTCUSDT');
     const btcTrend = btcData ? btcData.currentTrend : '—';
@@ -788,6 +914,40 @@ function updateMarketSentiment() {
         DOM.chipPatterns.className = `detail-chip ${pBull > pBear ? 'chip-bull' : pBear > pBull ? 'chip-bear' : 'chip-neutral'}`;
     }
 
+    // Chip Fear & Greed
+    if (DOM.chipFearGreed) {
+        if (fearGreedValue !== null) {
+            const emoji = fearGreedValue >= 75 ? '🤑' : fearGreedValue >= 55 ? '😐' : fearGreedValue >= 45 ? '😐' : fearGreedValue >= 25 ? '😨' : '😱';
+            DOM.chipFearGreed.textContent = `Fear & Greed: ${fearGreedValue} ${emoji}`;
+            DOM.chipFearGreed.className = `detail-chip ${fearGreedValue >= 75 ? 'chip-bull' : fearGreedValue <= 25 ? 'chip-bear' : 'chip-neutral'}`;
+        } else {
+            DOM.chipFearGreed.textContent = 'Fear & Greed: —';
+            DOM.chipFearGreed.className = 'detail-chip';
+        }
+    }
+
+    // Chip Sentimiento Social
+    if (DOM.chipSocialSentiment) {
+        if (avgSentimentUp !== null) {
+            DOM.chipSocialSentiment.textContent = `Sentimiento Social: ${avgSentimentUp.toFixed(1)}% 👍`;
+            DOM.chipSocialSentiment.className = `detail-chip ${avgSentimentUp > 60 ? 'chip-bull' : avgSentimentUp < 40 ? 'chip-bear' : 'chip-neutral'}`;
+        } else {
+            DOM.chipSocialSentiment.textContent = 'Sentimiento Social: —';
+            DOM.chipSocialSentiment.className = 'detail-chip';
+        }
+    }
+
+    // Chip Actividad Dev
+    if (DOM.chipDevActivity) {
+        if (avgDevCommits !== null) {
+            DOM.chipDevActivity.textContent = `Dev Commits: ${avgDevCommits.toFixed(0)}/4w`;
+            DOM.chipDevActivity.className = `detail-chip ${avgDevCommits > 100 ? 'chip-bull' : avgDevCommits < 10 ? 'chip-bear' : 'chip-neutral'}`;
+        } else {
+            DOM.chipDevActivity.textContent = 'Dev Commits: —';
+            DOM.chipDevActivity.className = 'detail-chip';
+        }
+    }
+
     // Determinar sentimiento general
     // Puntaje ponderado: tendencias + RSI + momentum + BTC
     let score = 0;
@@ -808,6 +968,14 @@ function updateMarketSentiment() {
     const ptTotal = ptBull + ptBear;
     if (ptTotal > 0) {
         score += ((ptBull - ptBear) / ptTotal) * 10;
+    }
+    // Factor 6: Fear & Greed Index (-15 a +15)
+    if (fearGreedValue !== null) {
+        score += (fearGreedValue - 50) * 0.3;
+    }
+    // Factor 7: Sentimiento social promedio (-10 a +10)
+    if (avgSentimentUp !== null) {
+        score += (avgSentimentUp - 50) * 0.2;
     }
 
     let sentimentClass, icon, title, desc;
@@ -898,6 +1066,19 @@ function renderRow(symbol, analysis, index) {
         }
     }
 
+    // Build social sentiment badge
+    let socialBadge = '<span style="color:#474d57">—</span>';
+    if (analysis.sentiment && analysis.sentiment.sentimentUp !== undefined) {
+        const sentimentUp = analysis.sentiment.sentimentUp;
+        if (sentimentUp > 60) {
+            socialBadge = '<span class="badge-social badge-social-bull">🟢</span>';
+        } else if (sentimentUp > 40) {
+            socialBadge = '<span class="badge-social badge-social-neutral">🟡</span>';
+        } else {
+            socialBadge = '<span class="badge-social badge-social-bear">🔴</span>';
+        }
+    }
+
     // Determinar señal y badge
     let signalBadge, actionButtons;
     if (analysis.liveSignal === 'BUY') {
@@ -918,6 +1099,7 @@ function renderRow(symbol, analysis, index) {
         <td class="${wrClass}">${analysis.winRate}%</td>
         <td>${analysis.trades} <span class="trade-detail">(${analysis.wins}W / ${analysis.liquidations}💀 / ${analysis.unresolvedTrades}⏳)</span></td>
         <td class="patterns-cell">${patternBadges}</td>
+        <td class="social-cell">${socialBadge}</td>
         <td>${signalBadge}</td>
         <td class="action-cell">${actionButtons}</td>
     `;
@@ -1089,7 +1271,8 @@ function exportToCSV() {
         'SMA 30', 'SMA 50', 'SMA 100', 'SMA 200',
         'RSI (14)', 'Patrones Detectados', 'Score Patrones',
         'MAE (%)', 'MFE (%)',
-        'Vela Open', 'Vela High', 'Vela Low', 'Vela Close', 'Volumen'
+        'Vela Open', 'Vela High', 'Vela Low', 'Vela Close', 'Volumen',
+        'Sentimiento Up (%)', 'Sentimiento Down (%)', 'Telegram Users', 'GitHub Commits', 'GitHub Stars', 'GitHub Forks'
     ];
 
     const tradeRows = [];
@@ -1130,6 +1313,12 @@ function exportToCSV() {
                 fmtNum(t.entryLow),
                 fmtNum(t.entryClose),
                 fmtNum(t.entryVolume, 2),
+                data.sentiment ? fmtNum(data.sentiment.sentimentUp, 1) : '',
+                data.sentiment ? fmtNum(data.sentiment.sentimentDown, 1) : '',
+                data.sentiment ? data.sentiment.telegramUsers : '',
+                data.sentiment ? data.sentiment.githubCommits : '',
+                data.sentiment ? data.sentiment.githubStars : '',
+                data.sentiment ? data.sentiment.githubForks : '',
             ]);
         }
     }
@@ -1141,7 +1330,8 @@ function exportToCSV() {
         'Par', 'ROI %', 'Win Rate %', 'Total Trades', 'Wins', 'Liquidaciones',
         'Sin Resolver', 'Max Drawdown %', 'Costo Funding Total ($)', 'Funding Rate Actual (%)',
         'Tendencia Actual', 'RSI Actual',
-        'Volatilidad %', 'Momentum %', 'Señal Viva', 'Patrones Vivos', 'Score Patrones Vivos'
+        'Volatilidad %', 'Momentum %', 'Señal Viva', 'Patrones Vivos', 'Score Patrones Vivos',
+        'Sentimiento Up (%)', 'Sentimiento Down (%)', 'Telegram Users', 'GitHub Commits', 'GitHub Stars', 'GitHub Forks'
     ];
 
     const summaryRows = resultsData.map(data => [
@@ -1165,6 +1355,12 @@ function exportToCSV() {
             ...(data.livePatterns?.bearishPatterns?.map(p => p.name) || []),
         ].join(' | ') || 'Ninguno',
         data.livePatterns?.score || 0,
+        data.sentiment ? fmtNum(data.sentiment.sentimentUp, 1) : '',
+        data.sentiment ? fmtNum(data.sentiment.sentimentDown, 1) : '',
+        data.sentiment ? data.sentiment.telegramUsers : '',
+        data.sentiment ? data.sentiment.githubCommits : '',
+        data.sentiment ? data.sentiment.githubStars : '',
+        data.sentiment ? data.sentiment.githubForks : '',
     ]);
 
     // ═══════════════════════════════════════════════
@@ -1228,6 +1424,11 @@ function exportToCSV() {
         ['Peor Par', `${worstPair.symbol} (${worstPair.roi}%)`],
         ['Señales de Compra Activas', buySignals],
         ['Señales de Venta Activas', sellSignals],
+        ['', ''],
+        ['SENTIMIENTO DEL MERCADO', ''],
+        ['Fear & Greed Index', fearGreedData ? `${fearGreedData.value} (${fearGreedData.classification})` : 'No disponible'],
+        ['Sentimiento Social Promedio (%)', sentimentResults.length > 0 ? avgSentimentUp.toFixed(1) : 'No disponible'],
+        ['Actividad Dev Promedio (commits/4w)', sentimentResults.length > 0 ? avgDevCommits.toFixed(0) : 'No disponible'],
     ];
 
     // ═══════════════════════════════════════════════

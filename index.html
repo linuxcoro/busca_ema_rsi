@@ -52,6 +52,10 @@
                         <option value="expand">Expansión</option>
                     </select>
                 </div>
+                <div class="input-group">
+                    <label for="coingeckoKey">CoinGecko API Key (opcional)</label>
+                    <input type="text" id="coingeckoKey" placeholder="Obtén gratis en coingecko.com" value="">
+                </div>
                 <button id="btnStart" title="Iniciar escaneo del mercado">
                     <span id="btnText">🔍 Escanear Mercado</span>
                 </button>
@@ -108,6 +112,9 @@
                     <div class="detail-chip" id="chipVolatility">Volatilidad: —</div>
                     <div class="detail-chip" id="chipMomentum">Momentum: —</div>
                     <div class="detail-chip" id="chipPatterns">Patrones: —</div>
+                    <div class="detail-chip" id="chipFearGreed">Fear & Greed: —</div>
+                    <div class="detail-chip" id="chipSocialSentiment">Sentimiento Social: —</div>
+                    <div class="detail-chip" id="chipDevActivity">Actividad Dev: —</div>
                 </div>
             </div>
 
@@ -148,6 +155,7 @@
                             <th class="sortable" data-sort="winRate">Win Rate <span class="sort-icon">⇅</span></th>
                             <th class="sortable" data-sort="trades">Trades <span class="sort-icon">⇅</span></th>
                             <th>Patrones</th>
+                            <th>Social</th>
                             <th>Señal</th>
                             <th>Acción</th>
                         </tr>

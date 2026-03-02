@@ -825,9 +825,39 @@ footer {
     border: 1px solid rgba(240, 185, 11, 0.3);
 }
 
-.patterns-cell {
-    max-width: 400px;
-    line-height: 1.8;
+.badge-social {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 50%;
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin: 1px 2px;
+    text-align: center;
+    min-width: 24px;
+}
+
+.badge-social-bull {
+    background: rgba(14, 203, 129, 0.15);
+    color: #0ecb81;
+    border: 1px solid rgba(14, 203, 129, 0.4);
+}
+
+.badge-social-neutral {
+    background: rgba(240, 185, 11, 0.15);
+    color: #f0b90b;
+    border: 1px solid rgba(240, 185, 11, 0.4);
+}
+
+.badge-social-bear {
+    background: rgba(246, 70, 93, 0.15);
+    color: #f6465d;
+    border: 1px solid rgba(246, 70, 93, 0.4);
+}
+
+.social-cell {
+    text-align: center;
+    width: 60px;
+}
     overflow-wrap: break-word;
     word-break: break-word;
     white-space: normal;
